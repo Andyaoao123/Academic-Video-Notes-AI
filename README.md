@@ -43,3 +43,22 @@
 
 💡 怎么修改它？
   如果你觉得这个 README 写的不错，点击文件上方的 Edit (笔状图标)，把上面的文字直接粘进去，然后点击底部的 Commit changes 即可！
+
+
+# --- 1. 你只需要改这里 ---
+MY_KEY = "你的API_KEY"
+MY_VIDEO = "你的视频链接"
+
+# --- 2. 剩下的自动运行 ---
+!apt-get install -y ffmpeg > /dev/null 2>&1
+!pip install -q openai-whisper yt-dlp
+import os
+
+# 抓取 main.py
+!curl -O https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
+
+# 直接运行并传入变量，不再玩“字符串替换”
+import main
+main.VIDEO_URL = MY_VIDEO
+main.MY_API_KEY = MY_KEY
+main.main()
