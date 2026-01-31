@@ -1,46 +1,36 @@
-import os, json, time, requests, whisper, subprocess
+import os, json, time, requests, whisper
 from google.colab import files
 
 # 用户配置
 VIDEO_URL = "在这里填入视频链接" 
 MY_API_KEY = "在这里填入你的KEY" 
 
-def main():
-    print("📦 正在准备环境...")
-    os.system("pip install -q openai-whisper yt-dlp")
+def run_process(video_url=None, api_key=None):
+    # 如果外部传了参数，就用外部的；否则用文件顶部的
+    url = video_url if video_url else VIDEO_URL
+    key = api_key if api_key else MY_API_KEY
     
-    # 1. 强力下载逻辑
-    print(f"🌍 正在尝试抓取: {VIDEO_URL}")
-    # 使用 subprocess 捕获下载错误，并添加 --force-overwrites 确保覆盖
-    download_cmd = f'yt-dlp -x --audio-format mp3 --force-overwrites -o "temp_audio.%(ext)s" "{VIDEO_URL}"'
-    result = os.system(download_cmd)
+    print(f"🌍 正在处理视频: {url}")
+    os.system(f'yt-dlp -x --audio-format mp3 --force-overwrites -o "temp_audio.mp3" "{url}"')
     
-    if result != 0 or not os.path.exists("temp_audio.mp3"):
-        print("❌ 下载失败！请检查视频链接是否正确，或该视频是否需要登录才能观看。")
+    if not os.path.exists("temp_audio.mp3"):
+        print("❌ 下载失败！请检查链接或权限。")
         return
 
-    # 2. Whisper 转录
-    print("🎙️ 正在识别语音 (请耐心等待)...")
-    try:
-        model = whisper.load_model("base")
-        # 显式指定识别 temp_audio.mp3
-        transcribe_result = model.transcribe("temp_audio.mp3", fp16=False)
-        raw_text = transcribe_result["text"]
-    except Exception as e:
-        print(f"🎙️ 转录过程出错: {e}")
-        return
+    print("🎙️ 正在转录...")
+    model = whisper.load_model("base")
+    raw_text = model.transcribe("temp_audio.mp3", fp16=False)["text"]
     
-    # 3. 备份
-    backup_file = "1_原始转录文本_备份.txt"
-    with open(backup_file, "w", encoding="utf-8") as f:
-        f.write(raw_text)
-    print(f"💾 原始文本已备份至: {backup_file}")
-    files.download(backup_file)
+    # 备份并下载
+    with open("1_备份.txt", "w") as f: f.write(raw_text)
+    files.download("1_备份.txt")
 
-    # 4. AI 精修
-    print("🧠 AI 正在排版精修...")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={MY_API_KEY}"
-    prompt = f"请将以下讲座内容整理成带有小标题、核心观点和Mermaid导图的代码：\n{raw_text}"
+    # AI 精修
+    print("🧠 AI 精修中...")
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={key}"
+    prompt = f"请整理以下内容：\n{raw_text}"
+    
+
     
     try:
         response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=60)
