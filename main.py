@@ -27,7 +27,7 @@ def run_process(video_url=None, api_key=None):
 
     # AI 精修
     print("🧠 AI 精修中...")
-    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={key}"
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
     prompt = f"请整理以下内容：\n{raw_text}"
     
 
