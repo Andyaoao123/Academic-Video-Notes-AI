@@ -31,6 +31,16 @@
 
 
 
+## ⚡ 性能调优 (Performance Tips)
+
+- **开启 GPU 加速 (强烈推荐)**：
+  在 Colab 菜单栏选择 `Runtime` -> `Change runtime type` -> 硬件加速器选 `T4 GPU`。
+  *开启后，1小时音频处理时间将从 40min 缩短至 5min 左右。*
+
+- **解决 YouTube 429 限流**：
+  如果遇到 `HTTP Error 429`，说明当前 Colab IP 被限流。本工具会自动回退到 Whisper 模式，请保持耐心。
+
+
 ## ⚡ 极速开始 (Colab 一键运行)
 
 不需要安装任何环境，直接在 [Google Colab](https://colab.research.google.com/) 新建一个单元格，粘贴并运行以下代码：
