@@ -119,3 +119,14 @@ def run_podcast_tool():
 
 if __name__ == "__main__":
     run_podcast_tool()
+
+
+import gradio as gr
+
+def fast_process(url):
+    main.VIDEO_URL = url
+    main.run_podcast_tool()
+    return "处理完成！请在下方预览或去网盘查看。"
+
+demo = gr.Interface(fn=fast_process, inputs="text", outputs="text")
+demo.launch(debug=True)
