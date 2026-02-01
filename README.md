@@ -46,23 +46,31 @@
 不需要安装任何环境，直接在 [Google Colab](https://colab.research.google.com/) 新建一个单元格，粘贴并运行以下代码：
 
 ```python
-# 1. 环境准备 (每次重启会话需跑一次)
-print("🛠️ 环境安装中...")
-!pip install -q openai-whisper openai yt-dlp
+# 1. 环境准备 (包含 GPU 必备组件和 Markdown 渲染插件)
+print("🛠️ 环境深度安装中...")
+!apt-get install -y nodejs # 解决 YouTube 下载警告
+!pip install -q openai-whisper openai yt-dlp markdown
 
-# 2. 从 GitHub 抓取最新逻辑代码
+# 2. 检查 GPU 是否开启 (确保你没跑在慢速 CPU 上)
+import torch
+if not torch.cuda.is_available():
+    print("⚠️ 警告：当前未开启 GPU 加速，处理长视频会很慢！请在菜单栏：修改 -> 笔记本设置 -> 硬件加速器 选 T4 GPU。")
+else:
+    print("✅ GPU 已就绪，准备起飞！")
+
+# 3. 从 GitHub 抓取最新逻辑代码 (纯净链接版)
 print("📥 正在同步 GitHub 最新脚本...")
-!curl -O [https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py](https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py)
+!curl -O https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
 
-# 3. 导入模块并刷新
+# 4. 导入模块并刷新
 import main, importlib
 importlib.reload(main) 
 
-# 4. 【核心配置】在此填入你的参数
-main.API_KEY = "你的sk-key" 
-main.VIDEO_URL = "[https://www.bilibili.com/video/BV16o6qBgETj/](https://www.bilibili.com/video/BV16o6qBgETj/)"
+# 5. 【核心配置】在此填入你的参数
+main.API_KEY = "你的真实sk-key" 
+main.VIDEO_URL = "https://www."
 
-# 5. 启动自动化流程
+# 6. 启动自动化流程
 print("🚀 启动自动化流程...")
 main.run_podcast_tool()
 
