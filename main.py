@@ -121,12 +121,19 @@ if __name__ == "__main__":
     run_podcast_tool()
 
 
-import gradio as gr
+# --- Gradio 界面设计 ---
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# 🎓 学术视频/播客深度收割机")
+    with gr.Row():
+        with gr.Column():
+            api_input = gr.Textbox(label="DeepSeek API KEY", placeholder="sk-...", type="password")
+            url_input = gr.Textbox(label="视频/播客链接", placeholder="支持 B站、YouTube、小宇宙...")
+            btn = gr.Button("🔥 开始收割 (建议开启 T4 GPU)", variant="primary")
+        with gr.Column():
+            output = gr.Markdown(label="生成的深度大纲")
+    
+    btn.click(fn=process_video, inputs=[api_input, url_input], outputs=output)
 
-def fast_process(url):
-    main.VIDEO_URL = url
-    main.run_podcast_tool()
-    return "处理完成！请在下方预览或去网盘查看。"
-
-demo = gr.Interface(fn=fast_process, inputs="text", outputs="text")
-demo.launch(debug=True)
+if __name__ == "__main__":
+    # share=True 会生成一个公网链接，你可以发给手机或者朋友用
+    demo.launch(share=True, debug=True)
