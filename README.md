@@ -46,31 +46,32 @@
 不需要安装任何环境，直接在 [Google Colab](https://colab.research.google.com/) 新建一个单元格，粘贴并运行以下代码：
 
 ```python
-# 1. 环境准备 (包含 GPU 必备组件和 Markdown 渲染插件)
+# 1. 环境准备 & 挂载网盘 (防止文件丢失)
+from google.colab import drive, files
+import torch, os
+
+if not os.path.exists('/content/drive'):
+    drive.mount('/content/drive')
+
 print("🛠️ 环境深度安装中...")
-!apt-get install -y nodejs # 解决 YouTube 下载警告
+!apt-get install -y nodejs
 !pip install -q openai-whisper openai yt-dlp markdown
 
-# 2. 检查 GPU 是否开启 (确保你没跑在慢速 CPU 上)
-import torch
+# 2. 检查 GPU
 if not torch.cuda.is_available():
-    print("⚠️ 警告：当前未开启 GPU 加速，处理长视频会很慢！请在菜单栏：修改 -> 笔记本设置 -> 硬件加速器 选 T4 GPU。")
+    print("⚠️ 没开 GPU！去 '修改 -> 笔记本设置' 开启 T4。")
 else:
-    print("✅ GPU 已就绪，准备起飞！")
+    print("✅ GPU 已就绪，起飞！")
 
-# 3. 从 GitHub 抓取最新逻辑代码 (纯净链接版)
-print("📥 正在同步 GitHub 最新脚本...")
+# 3. 同步 GitHub 脚本
 !curl -O https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
 
-# 4. 导入模块并刷新
+# 4. 配置参数并运行
 import main, importlib
-importlib.reload(main) 
+importlib.reload(main)
+main.API_KEY = "你的KEY"
+main.VIDEO_URL = "https://www.xiaoyuzhoufm.com/episode/..."
 
-# 5. 【核心配置】在此填入你的参数
-main.API_KEY = "你的真实sk-key" 
-main.VIDEO_URL = "https://www."
-
-# 6. 启动自动化流程
 print("🚀 启动自动化流程...")
 main.run_podcast_tool()
 
