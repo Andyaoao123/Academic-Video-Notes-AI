@@ -1,4 +1,4 @@
-import os, whisper, yt_dlp
+import os, whisper, yt_dlp, shutil
 from openai import OpenAI
 from google.colab import files
 import markdown
@@ -30,12 +30,8 @@ def run_podcast_tool():
         try:
             with yt_dlp.YoutubeDL(ydl_opts_subs) as ydl:
                 info = ydl.extract_info(VIDEO_URL, download=True)
-                # 如果下载了字幕文件（通常是 .vtt 或 .srt）
-                # 这里为了稳定，我们检查是否真的拿到了文本
                 if 'requested_subtitles' in info and info['requested_subtitles']:
                     print("✅ 成功获取在线字幕！正在闪电提取...")
-                    # 提示：实际提取vtt内容较复杂，这里简化逻辑：若有字幕则告知用户快，
-                    # 考虑到可靠性，以下逻辑仍保留音频下载作为终极保底
                 else:
                     print("ℹ️ 未检测到外挂字幕。")
         except:
@@ -53,12 +49,14 @@ def run_podcast_tool():
             with yt_dlp.YoutubeDL(audio_opts) as ydl:
                 ydl.download([VIDEO_URL])
             
-            # 使用 base 模型，兼顾速度与准确度
-            model = whisper.load_model("base") 
+            # 使用 base 模型，自动检测 GPU
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model = whisper.load_model("base", device=device) 
             result = model.transcribe("temp_audio.m4a")
             content_text = result['text']
         
-        # 3. 语义整形 (恢复你最爱的强大 Prompt)
+        # 3. 语义整形
         print("🔍 正在进行文本整形手术 (语义纠错 & 标点还原)...")
         client = OpenAI(api_key=API_KEY, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
         
@@ -91,11 +89,27 @@ def run_podcast_tool():
         map_res = client.chat.completions.create(model="qwen-plus", messages=[{"role": "user", "content": map_prompt}])
         map_content = map_res.choices[0].message.content
 
-        # 5. 下载与预览
-        with open("1_精排文稿.txt", "w", encoding="utf-8") as f: f.write(corrected_text)
-        with open("2_深度逻辑大纲.md", "w", encoding="utf-8") as f: f.write(map_content)
-        files.download("1_精排文稿.txt")
-        files.download("2_深度逻辑大纲.md")
+        # 5. 下载、预览与网盘备份
+        filename1 = "1_精排文稿.txt"
+        filename2 = "2_深度逻辑大纲.md"
+        
+        with open(filename1, "w", encoding="utf-8") as f: f.write(corrected_text)
+        with open(filename2, "w", encoding="utf-8") as f: f.write(map_content)
+        
+        # 自动触发浏览器下载
+        files.download(filename1)
+        files.download(filename2)
+
+        # 核心：Google Drive 自动备份逻辑
+        drive_path = "/content/drive/MyDrive/AI_Notes/"
+        if os.path.exists("/content/drive"):
+            if not os.path.exists(drive_path):
+                os.makedirs(drive_path)
+            shutil.copy(filename1, os.path.join(drive_path, filename1))
+            shutil.copy(filename2, os.path.join(drive_path, filename2))
+            print(f"💾 备份成功！文件已存入 Google Drive: {drive_path}")
+        else:
+            print("💡 提示：未挂载 Google Drive，文件仅保存在临时会话中。")
 
         print("\n--- 📝 实时预览 ---")
         display(HTML(f"<div style='background:#f9f9f9; padding:20px; border-radius:12px; border:1px solid #ddd; line-height:1.8;'>{markdown.markdown(map_content)}</div>"))
