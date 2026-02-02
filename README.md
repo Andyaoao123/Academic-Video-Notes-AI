@@ -46,35 +46,19 @@
 不需要安装任何环境，直接在 [Google Colab](https://colab.research.google.com/) 新建一个单元格，粘贴并运行以下代码：
 
 ```python
-# 1. 环境准备 & 挂载网盘 (防止文件丢失)
-from google.colab import drive, files
-import torch, os
-
-if not os.path.exists('/content/drive'):
-    drive.mount('/content/drive')
-
-print("🛠️ 环境深度安装中...")
+# 1. 环境准备
+print("🛠️ 环境快速安装中...")
 !apt-get install -y nodejs
-!pip install -q openai-whisper openai yt-dlp markdown
+!pip install -q openai-whisper openai yt-dlp markdown gradio
 
-# 2. 检查 GPU
-if not torch.cuda.is_available():
-    print("⚠️ 没开 GPU！去 '修改 -> 笔记本设置' 开启 T4。")
-else:
-    print("✅ GPU 已就绪，起飞！")
+# 2. 同步代码
+!curl -O [https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py](https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py)
 
-# 3. 同步 GitHub 脚本
-!curl -O https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
-
-# 4. 配置参数并运行
+# 3. 启动网页界面
 import main, importlib
 importlib.reload(main)
-main.API_KEY = "你的KEY"
-main.VIDEO_URL = "https://www.xiaoyuzhoufm.com/episode/..."
-
-print("🚀 启动自动化流程...")
-main.run_podcast_tool()
-
+# 运行后点击出现的 .gradio.live 链接
+main.demo.launch(share=True, debug=True)
 
 
 
