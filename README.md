@@ -46,20 +46,28 @@
 不需要安装任何环境，直接在 [Google Colab](https://colab.research.google.com/) 新建一个单元格，粘贴并运行以下代码：
 
 ```python
-# 1. 环境准备
-print("🛠️ 环境快速安装中...")
-!apt-get install -y nodejs
-!pip install -q openai-whisper openai yt-dlp markdown gradio
+# 1. 强制清理环境（确保没有旧文件干扰）
+import os
+if os.path.exists('main.py'):
+    os.remove('main.py')
+    print("🧹 已清理旧的 main.py")
 
-# 2. 同步代码
-!curl -O [https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py](https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py)
+# 2. 环境安装 (Gradio 是必须的)
+print("🛠️ 正在安装 Gradio 等必要组件...")
+!pip install -q openai-whisper openai yt-dlp gradio
 
-# 3. 启动网页界面
-import main, importlib
-importlib.reload(main)
-# 运行后点击出现的 .gradio.live 链接
-main.demo.launch(share=True, debug=True)
+# 3. 重新下载 main.py (确保 URL 是直接链接)
+print("📥 正在同步最新的 GitHub 代码...")
+!curl -L -o main.py https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
 
+# 4. 验证文件是否真的在那儿
+if os.path.exists('main.py'):
+    print("✅ main.py 下载成功！正在启动界面...")
+    import main, importlib
+    importlib.reload(main)
+    main.demo.launch(share=True, debug=True)
+else:
+    print("❌ 严重错误：main.py 仍然没有下载成功，请检查 GitHub 链接是否正确。")
 
 
 
