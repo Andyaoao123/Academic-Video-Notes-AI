@@ -1,32 +1,23 @@
 import os, whisper, yt_dlp, shutil
 from openai import OpenAI
-from google.colab import files
-import markdown
 import gradio as gr
-from IPython.display import display, HTML
 
 # --- 外部接口区 ---
 API_KEY = "sk-placeholder"
-VIDEO_URL = "url-placeholder"
 
 def process_video(api_key, video_url):
     """Gradio 调用的核心逻辑函数"""
     final_key = api_key if api_key and "sk-" in api_key else API_KEY
     
     if "placeholder" in final_key:
-        yield "❌ 错误：请在界面输入有效的 API_KEY"
-        return
-    if not video_url:
-        yield "❌ 错误：请输入视频或播客链接"
+        yield "❌ 错误：请在界面输入有效的 API_KEY", None
         return
 
     try:
-        # --- 1. 音频获取 (断点续传) ---
+        # --- 1. 音频获取 ---
         audio_file = "temp_audio.m4a"
-        if os.path.exists(audio_file):
-            yield "📁 检测到本地已存在音频，跳过下载步骤..."
-        else:
-            yield "📥 正在从源站抓取音频 (这可能需要 1-2 分钟)..."
+        if not os.path.exists(audio_file):
+            yield "📥 正在从源站抓取音频...", None
             audio_opts = {
                 'format': 'm4a/bestaudio/best',
                 'outtmpl': 'temp_audio.%(ext)s',
@@ -36,14 +27,13 @@ def process_video(api_key, video_url):
             with yt_dlp.YoutubeDL(audio_opts) as ydl:
                 ydl.download([video_url])
 
-        # --- 2. 语音识别 (缓存逻辑) ---
+        # --- 2. 语音识别 (缓存) ---
         txt_cache = "raw_transcript.txt"
         if os.path.exists(txt_cache):
-            yield "📄 检测到已存在识别文本，跳过听写，进入 AI 分析..."
             with open(txt_cache, "r", encoding="utf-8") as f:
                 content_text = f.read()
         else:
-            yield "🎙️ Whisper 正在拼命听写 (开启 GPU 约需 5-10 分钟)..."
+            yield "🎙️ Whisper 正在拼命听写...", None
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
             model = whisper.load_model("base", device=device) 
@@ -52,64 +42,68 @@ def process_video(api_key, video_url):
             with open(txt_cache, "w", encoding="utf-8") as f:
                 f.write(content_text)
         
-        # --- 3. 语义整形 ---
-        yield "🔍 正在进行文本整形手术..."
+        # --- 3. 核心改进：原意分段 (使用 Turbo 模型规避审核且保真) ---
+        yield "📑 正在进行【原意分段】(不删减原文)...", None
         client = OpenAI(api_key=final_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
         
-        correction_prompt = f"请对以下语音稿进行深度重塑（加标点、分段、纠错、去口语）：\n{content_text}"
-        corr_res = client.chat.completions.create(model="qwen-plus", messages=[{"role": "user", "content": correction_prompt}])
-        corrected_text = corr_res.choices[0].message.content
+        split_prompt = f"""
+        你是一位专业的速记员。请对以下文稿进行【仅分段与加标点】处理：
+        1. 严禁删减、改动或润色原文任何词语。
+        2. 仅根据语义进行自然段落切分并补充标点。
+        3. 这是一个关于人文/心理学的学术探讨，请保持其原始表述。
+        
+        待处理内容：
+        {content_text}
+        """
+        split_res = client.chat.completions.create(model="qwen-turbo", messages=[{"role": "user", "content": split_prompt}])
+        segmented_text = split_res.choices[0].message.content
+        
+        # 保存分段原稿文件
+        seg_file = "1_分段原稿.txt"
+        with open(seg_file, "w", encoding="utf-8") as f:
+            f.write(segmented_text)
 
-        # --- 4. 深度逻辑大纲 + 思维导图提取 ---
-        yield "✍️ 正在生成带金句的大纲 & 思维导图代码..."
+        # --- 4. 逻辑总结 + 思维导图 ---
+        yield "✍️ 正在基于分段稿生成大纲 & 思维导图...", seg_file
         map_prompt = f"""
-        你是一位顶级的逻辑分析师。请基于以下精排文稿进行深度总结：
-        
-        1. 【文字大纲】：
-           - # 一级标题：主题
-           - ## 二级标题：核心逻辑板块
-           - ### 三级标题：具体论点/子观点
-           - - 列表项：用「」包裹的原文核心金句。
-        
-        2. 【Mermaid 思维导图代码】：
-           在最后生成一段代码，必须以 ```mermaid 开头，使用 mindmap 语法，root((主题)) 结构。
+        你是一位顶级的逻辑分析师。请基于以下分段文稿提取大纲：
+        - # 一级标题：主题
+        - ## 二级标题：核心逻辑板块
+        - ### 三级标题：具体论点/子观点
+        - - 列表项：用「」包裹的原文金句。
+        - 最后附带一段 ```mermaid mindmap 代码。
         
         文稿内容：
-        {corrected_text}
+        {segmented_text}
         """
         map_res = client.chat.completions.create(model="qwen-plus", messages=[{"role": "user", "content": map_prompt}])
         map_content = map_res.choices[0].message.content
-
-        # --- 5. 保存 ---
-        filename = "深度逻辑总结.md"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(map_content)
         
-        yield map_content
+        yield map_content, seg_file
 
     except Exception as e:
-        yield f"❌ 运行报错: {str(e)}"
+        yield f"❌ 运行报错: {str(e)}", None
 
 # --- Gradio 界面设计 ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🎓 学术视频/播客深度收割机 (思维导图版)")
+    gr.Markdown("# 🎓 学术视频收割机 (原意保留+思维导图版)")
     with gr.Row():
-        with gr.Column():
+        with gr.Column(scale=1):
             api_input = gr.Textbox(label="API KEY", type="password")
-            url_input = gr.Textbox(label="视频链接")
-            with gr.Row():
-                btn = gr.Button("🔥 开始收割", variant="primary")
-                clear_btn = gr.Button("🧹 清空缓存")
-        with gr.Column():
-            output = gr.Markdown(label="生成的深度大纲")
+            url_input = gr.Textbox(label="视频/播客链接")
+            btn = gr.Button("🔥 开始收割", variant="primary")
+            clear_btn = gr.Button("🧹 清空缓存")
+        with gr.Column(scale=2):
+            file_output = gr.File(label="第一步：下载分段原稿")
+            output_md = gr.Markdown(label="第二步：生成的深度总结")
     
-    btn.click(fn=process_video, inputs=[api_input, url_input], outputs=output)
+    btn.click(fn=process_video, inputs=[api_input, url_input], outputs=[output_md, file_output])
     
     def clear_cache():
-        for f in ["temp_audio.m4a", "raw_transcript.txt"]:
+        for f in ["temp_audio.m4a", "raw_transcript.txt", "1_分段原稿.txt"]:
             if os.path.exists(f): os.remove(f)
-        return "✨ 缓存已清理。"
-    clear_btn.click(fn=clear_cache, outputs=output)
+        return "✨ 缓存已清理。", None
+    clear_btn.click(fn=clear_cache, outputs=[output_md, file_output])
 
 if __name__ == "__main__":
     demo.launch(share=True, debug=True)
