@@ -1,109 +1,113 @@
-import os, whisper, yt_dlp, shutil
+import os, whisper, yt_dlp, shutil, time
 from openai import OpenAI
 import gradio as gr
 
-# --- 外部接口区 ---
-API_KEY = "sk-placeholder"
-
-def process_video(api_key, video_url):
-    """Gradio 调用的核心逻辑函数"""
-    final_key = api_key if api_key and "sk-" in api_key else API_KEY
+def process_video_batch(api_key, video_urls_str):
+    """批量处理逻辑：循环每一个链接"""
+    final_key = api_key if api_key and "sk-" in api_key else "sk-placeholder"
+    
+    # 1. 拆分链接：按换行符拆分，去掉空格
+    urls = [u.strip() for u in video_urls_str.split('\n') if u.strip()]
     
     if "placeholder" in final_key:
         yield "❌ 错误：请在界面输入有效的 API_KEY", None
         return
+    if not urls:
+        yield "❌ 错误：请输入至少一个链接（每行一个）", None
+        return
 
-    try:
-        # --- 1. 音频获取 ---
-        audio_file = "temp_audio.m4a"
-        if not os.path.exists(audio_file):
-            yield "📥 正在从源站抓取音频...", None
-            audio_opts = {
-                'format': 'm4a/bestaudio/best',
-                'outtmpl': 'temp_audio.%(ext)s',
-                'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'm4a'}],
-                'quiet': True
-            }
-            with yt_dlp.YoutubeDL(audio_opts) as ydl:
-                ydl.download([video_url])
+    client = OpenAI(api_key=final_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    all_summary_report = ""
+    all_segmented_files = []
 
-        # --- 2. 语音识别 (缓存) ---
-        txt_cache = "raw_transcript.txt"
-        if os.path.exists(txt_cache):
-            with open(txt_cache, "r", encoding="utf-8") as f:
-                content_text = f.read()
-        else:
-            yield "🎙️ Whisper 正在拼命听写...", None
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            model = whisper.load_model("base", device=device) 
-            result = model.transcribe(audio_file)
-            content_text = result['text']
-            with open(txt_cache, "w", encoding="utf-8") as f:
-                f.write(content_text)
+    for idx, url in enumerate(urls):
+        header = f"### 📺 正在收割第 ({idx+1}/{len(urls)}): {url}\n"
+        yield all_summary_report + header + "正在启动...", all_segmented_files
         
-        # --- 3. 核心改进：原意分段 (使用 Turbo 模型规避审核且保真) ---
-        yield "📑 正在进行【原意分段】(不删减原文)...", None
-        client = OpenAI(api_key=final_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
-        
-        split_prompt = f"""
-        你是一位专业的速记员。请对以下文稿进行【仅分段与加标点】处理：
-        1. 严禁删减、改动或润色原文任何词语。
-        2. 仅根据语义进行自然段落切分并补充标点。
-        3. 这是一个关于人文/心理学的学术探讨，请保持其原始表述。
-        
-        待处理内容：
-        {content_text}
-        """
-        split_res = client.chat.completions.create(model="qwen-turbo", messages=[{"role": "user", "content": split_prompt}])
-        segmented_text = split_res.choices[0].message.content
-        
-        # 保存分段原稿文件
-        seg_file = "1_分段原稿.txt"
-        with open(seg_file, "w", encoding="utf-8") as f:
-            f.write(segmented_text)
+        try:
+            # 2. 为每个视频创建独立的文件名，防止互相覆盖
+            audio_file = f"temp_audio_{idx}.m4a"
+            txt_cache = f"raw_{idx}.txt"
+            seg_file = f"video_{idx+1}_分段原稿.txt"
 
-        # --- 4. 逻辑总结 + 思维导图 ---
-        yield "✍️ 正在基于分段稿生成大纲 & 思维导图...", seg_file
-        map_prompt = f"""
-        你是一位顶级的逻辑分析师。请基于以下分段文稿提取大纲：
-        - # 一级标题：主题
-        - ## 二级标题：核心逻辑板块
-        - ### 三级标题：具体论点/子观点
-        - - 列表项：用「」包裹的原文金句。
-        - 最后附带一段 ```mermaid mindmap 代码。
-        
-        文稿内容：
-        {segmented_text}
-        """
-        map_res = client.chat.completions.create(model="qwen-plus", messages=[{"role": "user", "content": map_prompt}])
-        map_content = map_res.choices[0].message.content
-        
-        yield map_content, seg_file
+            # --- A. 获取音频 ---
+            if not os.path.exists(audio_file):
+                yield all_summary_report + header + "📥 正在抓取音频...", all_segmented_files
+                audio_opts = {
+                    'format': 'm4a/bestaudio/best',
+                    'outtmpl': f'temp_audio_{idx}.%(ext)s',
+                    'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'm4a'}],
+                    'quiet': True
+                }
+                with yt_dlp.YoutubeDL(audio_opts) as ydl:
+                    ydl.download([url])
 
-    except Exception as e:
-        yield f"❌ 运行报错: {str(e)}", None
+            # --- B. 语音识别 ---
+            if os.path.exists(txt_cache):
+                with open(txt_cache, "r", encoding="utf-8") as f:
+                    content_text = f.read()
+            else:
+                yield all_summary_report + header + "🎙️ Whisper 听写中...", all_segmented_files
+                import torch
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                model = whisper.load_model("base", device=device) 
+                result = model.transcribe(audio_file)
+                content_text = result['text']
+                with open(txt_cache, "w", encoding="utf-8") as f:
+                    f.write(content_text)
 
-# --- Gradio 界面设计 ---
+            # --- C. 原意分段 (关键：不阉割) ---
+            yield all_summary_report + header + "📑 正在原意分段 (保真模式)...", all_segmented_files
+            split_prompt = f"你是一位专业的速记员。请对以下文稿进行【仅分段与加标点】处理，严禁删减、改动或润色原文任何词语：\n\n{content_text}"
+            
+            # 使用 Turbo 模型跑分段，速度快且审核松
+            split_res = client.chat.completions.create(model="qwen-turbo", messages=[{"role": "user", "content": split_prompt}])
+            segmented_text = split_res.choices[0].message.content
+            
+            with open(seg_file, "w", encoding="utf-8") as f:
+                f.write(segmented_text)
+            all_segmented_files.append(seg_file)
+
+            # --- D. 提炼导图 ---
+            yield all_summary_report + header + "✍️ 正在提炼思维导图大纲...", all_segmented_files
+            map_prompt = f"你是一位顶级的逻辑分析师。请基于以下分段文稿提取大纲和 mermaid mindmap 代码。要求：严格保留核心论点，用「」包裹金句。\n\n文稿内容：\n{segmented_text}"
+            
+            map_res = client.chat.completions.create(model="qwen-plus", messages=[{"role": "user", "content": map_prompt}])
+            map_content = map_res.choices[0].message.content
+
+            # 累加报告内容
+            all_summary_report += f"\n---\n{header}\n{map_content}\n"
+            yield all_summary_report, all_segmented_files
+
+        except Exception as e:
+            error_msg = f"\n❌ 视频 {idx+1} 运行报错: {str(e)}\n"
+            all_summary_report += error_msg
+            yield all_summary_report, all_segmented_files
+
+    yield all_summary_report + "\n\n✅ 所有任务处理完成！", all_segmented_files
+
+# --- Gradio 界面 (改为支持多行输入) ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🎓 学术视频收割机 (原意保留+思维导图版)")
+    gr.Markdown("# 🎓 多链接批量学术收割机 (原意不阉割版)")
     with gr.Row():
         with gr.Column(scale=1):
             api_input = gr.Textbox(label="API KEY", type="password")
-            url_input = gr.Textbox(label="视频/播客链接")
-            btn = gr.Button("🔥 开始收割", variant="primary")
-            clear_btn = gr.Button("🧹 清空缓存")
+            url_input = gr.Textbox(label="视频/播客链接 (每行一个)", lines=5, placeholder="粘贴多个链接，一行一个...")
+            btn = gr.Button("🚀 开始批量收割", variant="primary")
+            clear_btn = gr.Button("🧹 清空所有缓存")
         with gr.Column(scale=2):
-            file_output = gr.File(label="第一步：下载分段原稿")
-            output_md = gr.Markdown(label="第二步：生成的深度总结")
+            file_output = gr.File(label="下载所有分段原稿", file_count="multiple")
+            output_md = gr.Markdown(label="生成的汇总总结报告")
     
-    btn.click(fn=process_video, inputs=[api_input, url_input], outputs=[output_md, file_output])
+    btn.click(fn=process_video_batch, inputs=[api_input, url_input], outputs=[output_md, file_output])
     
-    def clear_cache():
-        for f in ["temp_audio.m4a", "raw_transcript.txt", "1_分段原稿.txt"]:
-            if os.path.exists(f): os.remove(f)
-        return "✨ 缓存已清理。", None
-    clear_btn.click(fn=clear_cache, outputs=[output_md, file_output])
+    def clear_all():
+        # 清理目录下所有的临时音频、文稿
+        files_to_delete = [f for f in os.listdir() if f.endswith((".m4a", ".txt", ".md"))]
+        for f in files_to_delete:
+            os.remove(f)
+        return "✨ 所有缓存文件已清理。", None
+    clear_btn.click(fn=clear_all, outputs=[output_md, file_output])
 
 if __name__ == "__main__":
     demo.launch(share=True, debug=True)
