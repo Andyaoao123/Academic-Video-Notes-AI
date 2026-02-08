@@ -46,21 +46,24 @@
 不需要安装任何环境，直接在 [Google Colab](https://colab.research.google.com/) 新建一个单元格，粘贴并运行以下代码：
 
 ```python
-# 1. 强制清理环境（确保没有旧文件干扰）
-import os
-if os.path.exists('main.py'):
-    os.remove('main.py')
-    print("🧹 已清理旧的 main.py")
+# 1. 强制清理环境（确保没有任何旧的坏文件干扰）
+import os, glob
+files_to_delete = ['main.py', 'temp_audio_*.mp3', 'temp_audio_*.m4a', 'raw_*.txt', 'temp_*_P*.mp3']
+for pattern in files_to_delete:
+    for f in glob.glob(pattern):
+        try:
+            os.remove(f)
+            print(f"🧹 已清理旧文件: {f}")
+        except:
+            pass
 
 # 2. 环境安装（新增了 pydub 和 ffmpeg）
 print("🛠️ 正在安装工业级收割组件 (Whisper, Gradio, Pydub, FFmpeg)...")
-# !pip 负责安装 Python 库
 !pip install -q openai-whisper openai yt-dlp gradio pydub
-# !apt 负责安装系统级的音频引擎
 !apt-get install -y ffmpeg
 
 # 3. 重新下载 main.py
-print("📥 正在从 GitHub 同步最新的【流水线版】代码...")
+print("📥 正在从 GitHub 同步最新的【工业流水线版】代码...")
 !curl -L -o main.py https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
 
 # 4. 验证并启动
@@ -68,6 +71,7 @@ if os.path.exists('main.py'):
     print("✅ 工业流水线版同步成功！正在启动界面...")
     import main, importlib
     importlib.reload(main)
+    # 这一步会自动弹出手机可用的 .gradio.live 链接
     main.demo.launch(share=True, debug=True)
 else:
     print("❌ 严重错误：main.py 下载失败，请检查 GitHub 链接。")
