@@ -55,10 +55,10 @@ def process_all_in_one(api_key, input_content, harvest_mode):
         yield all_summary_report + header + "正在启动下载...", all_files
         
         try:
-            audio_file = f"temp_audio_{idx}.m4a"
+            audio_file = f"temp_audio_{idx}.mp3"
             # 1. 下载
             if not os.path.exists(audio_file):
-                opts = {'format': 'm4a/bestaudio/best','outtmpl': f'temp_audio_{idx}.%(ext)s','postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'm4a'}],'quiet': True}
+                opts = {'format': 'mp3/bestaudio/best','outtmpl': f'temp_audio_{idx}.%(ext)s','postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}],'quiet': True}
                 with yt_dlp.YoutubeDL(opts) as ydl: ydl.download([url])
 
             # 2. 判断长度并开启流水线
@@ -77,8 +77,8 @@ def process_all_in_one(api_key, input_content, harvest_mode):
 
             for c_idx, chunk in enumerate(chunks):
                 chunk_tag = f"P{c_idx+1}"
-                chunk_filename = f"temp_{idx}_{chunk_tag}.m4a"
-                chunk.export(chunk_filename, format="m4a")
+                chunk_filename = f"temp_{idx}_{chunk_tag}.mp3"
+                chunk.export(chunk_filename, format="mp3")
                 
                 # 生产者：听写
                 yield all_summary_report + header + f"🎙️ [第{c_idx+1}段] Whisper 听写中...", all_files
@@ -134,7 +134,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     btn.click(fn=process_all_in_one, inputs=[api_input, input_box, mode_radio], outputs=[output_md, file_output])
     def clear():
         for f in os.listdir():
-            if f.endswith((".m4a", ".txt", ".mp4")): os.remove(f)
+            if f.endswith((".mp3", ".txt", ".mp4")): os.remove(f)
         return "✨ 缓存已清空。", None
     clear_btn.click(fn=clear, outputs=[output_md, file_output])
 
