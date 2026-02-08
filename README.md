@@ -52,24 +52,25 @@ if os.path.exists('main.py'):
     os.remove('main.py')
     print("🧹 已清理旧的 main.py")
 
-# 2. 环境安装 (Gradio 是必须的)
-print("🛠️ 正在安装 Gradio 等必要组件...")
-!pip install -q openai-whisper openai yt-dlp gradio
+# 2. 环境安装（新增了 pydub 和 ffmpeg）
+print("🛠️ 正在安装工业级收割组件 (Whisper, Gradio, Pydub, FFmpeg)...")
+# !pip 负责安装 Python 库
+!pip install -q openai-whisper openai yt-dlp gradio pydub
+# !apt 负责安装系统级的音频引擎
+!apt-get install -y ffmpeg
 
-# 3. 重新下载 main.py (确保 URL 是直接链接)
-print("📥 正在同步最新的 GitHub 代码...")
+# 3. 重新下载 main.py
+print("📥 正在从 GitHub 同步最新的【流水线版】代码...")
 !curl -L -o main.py https://raw.githubusercontent.com/Andyaoao123/Academic-Video-Notes-AI/main/main.py
 
-# 4. 验证文件是否真的在那儿
+# 4. 验证并启动
 if os.path.exists('main.py'):
-    print("✅ main.py 下载成功！正在启动界面...")
+    print("✅ 工业流水线版同步成功！正在启动界面...")
     import main, importlib
     importlib.reload(main)
     main.demo.launch(share=True, debug=True)
 else:
-    print("❌ 严重错误：main.py 仍然没有下载成功，请检查 GitHub 链接是否正确。")
-
-
+    print("❌ 严重错误：main.py 下载失败，请检查 GitHub 链接。")
 
 
 
