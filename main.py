@@ -4,7 +4,7 @@ import gradio as gr
 from pydub import AudioSegment
 
 def call_ai_pipeline(client, harvest_mode, text_content):
-    """提取出的 AI 处理核心逻辑，用于被流水线重复调用"""
+    """提取出的 AI 处理核心逻辑"""
     # Step B: 标点还原
     clean_p = f"你是一位文字整理师。请对以下原始语音文本进行【标点还原】和【逻辑分段】，严禁删减或润色原文词语：\n\n{text_content}"
     clean_res = client.chat.completions.create(model="qwen-turbo", messages=[{"role": "user", "content": clean_p}])
@@ -48,16 +48,33 @@ def process_all_in_one(api_key, input_content, harvest_mode):
         except Exception as e: yield f"❌ 批改失败: {str(e)}", None
         return
 
-    for idx, url in enumerate(lines):
-        header = f"### 📺 正在收割 ({idx+1}/{len(lines)}): {url}\n"
-        yield all_summary_report + header + "正在检查/启动下载...", all_files
+    for idx, content in enumerate(lines):
+        header = f"### 📺 正在处理 ({idx+1}/{len(lines)}): {content}\n"
+        yield all_summary_report + header + "正在检查/准备资源...", all_files
         
         try:
             audio_file = f"temp_audio_{idx}.mp3"
-            # 1. 下载 (如果 mp3 已存在则跳过下载)
-            if not os.path.exists(audio_file):
-                opts = {'format': 'mp3/bestaudio/best','outtmpl': f'temp_audio_{idx}.%(ext)s','postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}],'quiet': True}
-                with yt_dlp.YoutubeDL(opts) as ydl: ydl.download([url])
+            
+            # 【核心改进 1】：识别本地/Drive 路径并自动转码
+            if content.startswith("/content/"):
+                if not os.path.exists(audio_file):
+                    yield all_summary_report + header + "📂 检测到路径，正在转换音轨...", all_files
+                    raw_data = AudioSegment.from_file(content)
+                    raw_data.export(audio_file, format="mp3")
+            
+            # 【核心改进 2】：增加 B 站防爬补丁下载
+            elif not os.path.exists(audio_file):
+                yield all_summary_report + header + "🌐 正在启动网络下载 (带防爬补丁)...", all_files
+                opts = {
+                    'format': 'mp3/bestaudio/best',
+                    'outtmpl': f'temp_audio_{idx}.%(ext)s',
+                    'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}],
+                    'quiet': True,
+                    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+                    'referer': 'https://www.bilibili.com/',
+                    'nocheckcertificate': True
+                }
+                with yt_dlp.YoutubeDL(opts) as ydl: ydl.download([content])
 
             # 2. 解析音频
             audio_data = AudioSegment.from_file(audio_file)
@@ -66,46 +83,44 @@ def process_all_in_one(api_key, input_content, harvest_mode):
             chunks = [audio_data[i:i + chunk_length] for i in range(0, len(audio_data), chunk_length)]
             
             video_combined_text = ""
-            yield all_summary_report + header + f"📦 音频全长 {duration_mins:.1f} 分钟，共 {len(chunks)} 段。正在同步断点...", all_files
+            yield all_summary_report + header + f"📦 全长 {duration_mins:.1f} 分钟，共 {len(chunks)} 段。检查断点...", all_files
 
+            # 【核心改进 3】：智能检测 GPU，挂了就自动换 CPU
             import torch
-            model = whisper.load_model("base", device="cuda" if torch.cuda.is_available() else "cpu")
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model = whisper.load_model("base", device=device)
 
             for c_idx, chunk in enumerate(chunks):
                 tmp_out = f"video_{idx+1}_Part_{c_idx+1}.txt"
                 segment_divider = f"\n\n--- 📜 第 {c_idx+1} 部分 (约 {c_idx*20}-{(c_idx+1)*20}min) ---\n\n"
 
-                # 【断点续传逻辑】：如果该段的文本已存在，直接读取并跳过
                 if os.path.exists(tmp_out):
-                    yield all_summary_report + header + f"⏩ 检测到第 {c_idx+1}/{len(chunks)} 段已完成，正在秒速加载...", all_files
+                    yield all_summary_report + header + f"⏩ 加载已存断点: 第 {c_idx+1}/{len(chunks)} 段...", all_files
                     with open(tmp_out, "r", encoding="utf-8") as f:
                         processed_chunk_text = f.read()
                     video_combined_text += segment_divider + processed_chunk_text
                     if tmp_out not in all_files: all_files.append(tmp_out)
                     continue 
 
-                # 如果没有缓存，则执行正常收割
                 chunk_filename = f"temp_{idx}_{c_idx+1}.mp3"
                 chunk.export(chunk_filename, format="mp3")
                 
-                yield all_summary_report + header + f"🎙️ [第{c_idx+1}段] Whisper 听写中...", all_files
+                yield all_summary_report + header + f"🎙️ [第{c_idx+1}段] Whisper 听写中 ({device})...", all_files
                 raw_chunk_text = model.transcribe(chunk_filename)['text']
                 
-                yield all_summary_report + header + f"✍️ [第{c_idx+1}段] AI 正在处理...", all_files
+                yield all_summary_report + header + f"✍️ [第{c_idx+1}段] AI 处理中...", all_files
                 processed_chunk_text = call_ai_pipeline(client, harvest_mode, raw_chunk_text)
                 
-                # 保存这一段的结果到硬盘
                 with open(tmp_out, "w", encoding="utf-8") as f: f.write(processed_chunk_text)
                 video_combined_text += segment_divider + processed_chunk_text
                 all_files.append(tmp_out)
                 
                 yield all_summary_report + header + video_combined_text, all_files
 
-            # 4. 全部完成后保存总文件
             final_out_f = f"video_{idx+1}_完整收割稿.txt"
             with open(final_out_f, "w", encoding="utf-8") as f: f.write(video_combined_text)
             all_files.append(final_out_f)
-            all_summary_report += f"\n---\n{header}\n✅ 视频处理完成！\n"
+            all_summary_report += f"\n---\n{header}\n✅ 处理完成！\n"
             yield all_summary_report, all_files
 
         except Exception as e:
@@ -116,31 +131,30 @@ def process_all_in_one(api_key, input_content, harvest_mode):
 
 # --- 界面部分 ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🎓 学术多功能收割机 (断点续传流水线版)")
+    gr.Markdown("# 🎓 学术多功能收割机 (全能路径识别版)")
     with gr.Row():
         with gr.Column(scale=1):
             api_input = gr.Textbox(label="API KEY", type="password")
-            input_box = gr.Textbox(label="输入区域", lines=8, placeholder="视频填链接；作文填原文")
+            input_box = gr.Textbox(label="输入区域", lines=8, placeholder="填链接 或 填 /content/ 开头的本地路径")
             mode_radio = gr.Radio(
                 choices=["逻辑大纲模式", "逐段整理(不翻译)", "逐段翻译对照", "雅思作文教练"], 
                 value="逐段整理(不翻译)", 
                 label="选择作战模式"
             )
             btn = gr.Button("🚀 立即处理", variant="primary")
-            clear_btn = gr.Button("🧹 清理缓存文件 (处理新视频前点这个)")
+            clear_btn = gr.Button("🧹 清理缓存文件")
         with gr.Column(scale=2):
-            file_output = gr.File(label="📥 下载结果 (含分段稿)", file_count="multiple")
-            output_md = gr.Markdown(label="📄 实时流式预览")
+            file_output = gr.File(label="📥 结果下载", file_count="multiple")
+            output_md = gr.Markdown(label="📄 实时预览")
     
     btn.click(fn=process_all_in_one, inputs=[api_input, input_box, mode_radio], outputs=[output_md, file_output])
     
     def clear():
-        # 清理所有中间过程文件
         for f in os.listdir():
-            if f.startswith(("temp_", "video_")) or f.endswith((".mp3", ".txt", ".m4a")):
+            if f.startswith(("temp_", "video_", "cache_")) or f.endswith((".mp3", ".txt", ".m4a")):
                 try: os.remove(f)
                 except: pass
-        return "✨ 缓存已清空，可以开始处理全新的视频链接了。", None
+        return "✨ 缓存已清空，可以开始处理新文件了。", None
     clear_btn.click(fn=clear, outputs=[output_md, file_output])
 
 if __name__ == "__main__":
